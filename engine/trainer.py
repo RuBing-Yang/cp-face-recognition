@@ -1,7 +1,12 @@
 import os
+import time
 
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
 import numpy as np
+
+from utils.meter import Meter, AverageMeter, ProgressMeter
 
 
 def save(model, ckpt_num, dir_name):
@@ -50,6 +55,39 @@ def fit(train_loader, model, loss_fn, optimizer, scheduler, nb_epoch,
             save(model, epoch + 1, save_model_to)
 
 
+def class_accuracy(output, target, topk=(1,)):
+    """Computes the accuracy over the k top predictions for the specified values of k"""
+    with torch.no_grad():
+        maxk = max(topk)
+        batch_size = target.size(0)
+
+        _, pred = output.topk(maxk, 1, True, True)
+        pred = pred.t()
+        correct = pred.eq(target.view(1, -1).expand_as(pred))
+
+        res = []
+        for k in topk:
+            correct_k = correct[:k].view(-1).float().sum(0, keepdim=True)
+            res.append(correct_k.mul_(100.0 / batch_size))
+        return res
+
+
+def retrieval_accuracy(sims, flags, thres_step=1e-2):
+    assert(thres_step > 0 and thres_step < 1)
+    thres_range = np.arange(-1.0, 1.0, thres_step)
+
+    successes = torch.Tensor([
+        torch.sum((sims > thres) == flags)
+        for thres in thres_range
+    ])
+    
+    best_idx = torch.argmax(successes)
+    best_thres = thres_range[best_idx]
+    acc = successes[best_idx] / len(flags)
+
+    return best_thres, acc 
+
+
 def train_epoch(train_loader, model, loss_fn, optimizer, device, log_interval):
     model.train()
     total_loss = 0
@@ -88,8 +126,121 @@ def train_epoch(train_loader, model, loss_fn, optimizer, device, log_interval):
     return total_loss
 
 
-def train():
-    pass
+def train(train_loader, net, metric, criterion, 
+          optimizer, lr_scheduler, epoch, args):
+    batch_time = AverageMeter('Time', ':5.3f')
+    data_time = AverageMeter('Data', ':5.3f')
+    losses = AverageMeter('Loss', ':.4e')
+    top1 = AverageMeter('Acc@1', ':6.02f')
+    top5 = AverageMeter('Acc@5', ':6.02f')
+    learning_rate = Meter('learnig rate', ':.4e')
+    progress = ProgressMeter(
+        len(train_loader),
+        [batch_time, learning_rate, data_time, losses, top1, top5],
+        prefix="Epoch: [{}]".format(epoch))
 
-def validate():
-    pass
+    # switch to train mode
+    net.train()
+    metric.train()
+
+    end = time.time()
+    for i, (images, target) in enumerate(train_loader):
+        # measure data loading time
+        data_time.update(time.time() - end)
+
+        if args.gpu is not None:
+            images = images.cuda(args.gpu, non_blocking=True)
+        target = target.cuda(args.gpu, non_blocking=True)
+
+        # compute output
+        raw_logits = net(images)
+        output = metric(raw_logits, target)
+        loss = criterion(output, target)
+
+        # measure accuracy and record loss
+        acc1, acc5 = class_accuracy(output, target, topk=(1, 5))
+        losses.update(loss.item(), images.size(0))
+        top1.update(acc1[0], images.size(0))
+        top5.update(acc5[0], images.size(0))
+        learning_rate.update(lr_scheduler.get_lr()[0])
+
+        # compute gradient and do SGD step
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+        # measure elapsed time
+        batch_time.update(time.time() - end)
+        end = time.time()
+
+        if (i+1) % args.print_freq == 0:
+            progress.display(i + 1)
+
+
+def validate(val_loader, val_dataset_size, 
+             net, epoch, args, 
+             visualizer=None):
+    batch_time = AverageMeter('Time', ':6.3f')
+    progress = ProgressMeter(
+        len(val_loader), [batch_time, ], prefix='Test: '
+    )
+
+    # switch to evaluate mode
+    net.eval()
+
+    pairs = [(i, j) 
+        for i in range(val_dataset_size) 
+        for j in range(val_dataset_size)
+        if i < j
+    ]
+
+    feats = []
+    # fliped_feats = []
+    targets = []
+    with torch.no_grad():
+        end = time.time()
+        for i, (images, target) in enumerate(val_loader):
+            if args.gpu is not None:
+                images = images.cuda(args.gpu, non_blocking=True)
+            
+            target = target.cuda(args.gpu, non_blocking=True)
+            
+            # fliped_images = images.flip(-1) 
+            
+            # compute output
+            feat = net(images)
+            # fliped_feat = net(fliped_images)
+
+            feats.append(feat)
+            # fliped_feats.append(fliped_feat)
+            targets.append(target) 
+
+            # measure elapsed time
+            batch_time.update(time.time() - end)
+            end = time.time()
+
+            if (i+1) % args.print_freq == 0:
+                progress.display(i + 1)        
+
+    feats = torch.cat(feats, dim=0)
+    # fliped_feats = torch.cat(fliped_feats, dim=0)
+    targets = torch.cat(targets, dim=0) 
+
+    flags = torch.Tensor([ 
+        targets[i] == targets[j] 
+        for (i, j) in pairs
+    ]).cuda().type(torch.bool)
+
+    assert(len(pairs) == len(flags))
+    sims = torch.cat([
+        F.cosine_similarity(feats[i: i+1], feats[j: j+1])
+        for (i, j) in pairs
+    ]).cuda()
+
+    # measure accuracy and record loss
+    thres, acc = retrieval_accuracy(sims, flags, thres_step=5e-3)
+
+    # TODO: this should also be done with the ProgressMeter
+    print(f'Epoch: [{epoch}] * Threshold {thres:6.3f}\tAcc {acc*100:4.2f}')
+
+    return thres, acc
