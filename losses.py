@@ -11,6 +11,9 @@ MAIN_LOSS_CHOICES = (N_PAIR, ANGULAR, N_PAIR_ANGULAR)
 
 CROSS_ENTROPY = 'cross-entropy'
 
+# TODO: 
+#   due to outfeature has already noramlized =>
+#       1. reduce l2-loss coeffceint
 
 class BlendedLoss(object):
     def __init__(self, main_loss_type, cross_entropy_flag):
@@ -129,16 +132,16 @@ class NPairLoss(nn.Module):
     def n_pair_loss(anchors, positives, negatives):
         """
         Calculates N-Pair loss
-        :param anchors: A torch.Tensor, (n, embedding_size)
-        :param positives: A torch.Tensor, (n, embedding_size)
-        :param negatives: A torch.Tensor, (n, n-1, embedding_size)
+        :param anchors: A torch.Tensor, (batch_size, embedding_size)
+        :param positives: A torch.Tensor, (batch_size, embedding_size)
+        :param negatives: A torch.Tensor, (batch_size, n-1, embedding_size)
         :return: A scalar
         """
-        anchors = torch.unsqueeze(anchors, dim=1)  # (n, 1, embedding_size)
-        positives = torch.unsqueeze(positives, dim=1)  # (n, 1, embedding_size)
+        anchors = torch.unsqueeze(anchors, dim=1)  # (batch_size, 1, embedding_size)
+        positives = torch.unsqueeze(positives, dim=1)  # (batch_size, 1, embedding_size)
 
-        x = torch.matmul(anchors, (negatives - positives).transpose(1, 2))  # (n, 1, n-1)
-        x = torch.sum(torch.exp(x), 2)  # (n, 1)
+        x = torch.matmul(anchors, (negatives - positives).transpose(1, 2))  # (batch_size, 1, n-1)
+        x = torch.sum(torch.exp(x), 2)  # (batch_size, 1)
         loss = torch.mean(torch.log(1+x))
         return loss
 
@@ -187,17 +190,17 @@ class AngularLoss(NPairLoss):
     def angular_loss(anchors, positives, negatives, angle_bound=1.):
         """
         Calculates angular loss
-        :param anchors: A torch.Tensor, (n, embedding_size)
-        :param positives: A torch.Tensor, (n, embedding_size)
-        :param negatives: A torch.Tensor, (n, n-1, embedding_size)
+        :param anchors: A torch.Tensor, (batch_size, embedding_size)
+        :param positives: A torch.Tensor, (batch_size, embedding_size)
+        :param negatives: A torch.Tensor, (batch_size, n-1, embedding_size)
         :param angle_bound: tan^2 angle
         :return: A scalar
         """
-        anchors = torch.unsqueeze(anchors, dim=1)  # (n, 1, embedding_size)
-        positives = torch.unsqueeze(positives, dim=1)  # (n, 1, embedding_size)
+        anchors = torch.unsqueeze(anchors, dim=1)  # (batch_size, 1, embedding_size)
+        positives = torch.unsqueeze(positives, dim=1)  # (batch_size, 1, embedding_size)
 
         x = 4. * angle_bound * torch.matmul((anchors + positives), negatives.transpose(1, 2)) \
-            - 2. * (1. + angle_bound) * torch.matmul(anchors, positives.transpose(1, 2))  # (n, 1, n-1)
+            - 2. * (1. + angle_bound) * torch.matmul(anchors, positives.transpose(1, 2))  # (batch_size, 1, n-1)
 
         # Preventing overflow
         with torch.no_grad():
