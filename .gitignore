@@ -111,3 +111,9 @@ model/
 
 # dataset
 data/
+
+# shell script
+train.sh
+
+# figures 
+*.png
