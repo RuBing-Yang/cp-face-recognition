@@ -8,7 +8,7 @@ import torch
 from torch.utils.data import DataLoader
 from torch.utils.data.sampler import BatchSampler
 
-
+# TODO: #dataloading - implement dataloading following the instructions in main.py
 class BalancedBatchSampler(BatchSampler):
     """
     BatchSampler - from a MNIST-like dataset, samples n_classes and within these classes samples n_samples.
@@ -40,8 +40,9 @@ class BalancedBatchSampler(BatchSampler):
             indices = []
             for class_ in classes:
                 indices.extend(self.label_to_indices[class_][
-                               self.used_label_indices_count[class_]:self.used_label_indices_count[
-                                                                         class_] + self.n_samples])
+                    self.used_label_indices_count[class_]:
+                    self.used_label_indices_count[class_] + self.n_samples
+                ])
                 self.used_label_indices_count[class_] += self.n_samples
                 if self.used_label_indices_count[class_] + self.n_samples > len(self.label_to_indices[class_]):
                     np.random.shuffle(self.label_to_indices[class_])
