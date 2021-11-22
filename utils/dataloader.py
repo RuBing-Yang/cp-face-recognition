@@ -8,7 +8,7 @@ from torch.utils.data import Dataset
 from torchvision import transforms, datasets
 from PIL import Image
 
-
+# TODO: #dataloading
 def train_data_loader(data_path, img_size, use_augment=False):
     if use_augment:
         data_transforms = transforms.Compose([
