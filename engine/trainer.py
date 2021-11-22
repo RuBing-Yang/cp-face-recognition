@@ -18,7 +18,7 @@ def save(model, ckpt_num, dir_name):
     print('model saved!')
 
 
-def fit(train_loader, model, loss_fn, optimizer, scheduler, nb_epoch,
+def fit(train_loader, cartoon_encoder, face_encoder, loss_fn, optimizer, scheduler, nb_epoch,
         device, log_interval, start_epoch=0, save_model_to='/tmp/save_model_to'):
     """
     Loaders, model, loss function and metrics should work together for a given task,
@@ -31,7 +31,7 @@ def fit(train_loader, model, loss_fn, optimizer, scheduler, nb_epoch,
     """
 
     # Save pre-trained model
-    save(model, 0, save_model_to)
+    save(cartoon_encoder, 0, save_model_to)
 
     for epoch in range(0, start_epoch):
         scheduler.step()
@@ -40,7 +40,7 @@ def fit(train_loader, model, loss_fn, optimizer, scheduler, nb_epoch,
         scheduler.step()
 
         # Train stage
-        train_loss = train_epoch(train_loader, model, loss_fn, optimizer, device, log_interval)
+        train_loss = train_epoch(train_loader, cartoon_encoder, loss_fn, optimizer, device, log_interval)
 
         log_dict = {'epoch': epoch + 1,
                     'epoch_total': nb_epoch,
@@ -52,7 +52,7 @@ def fit(train_loader, model, loss_fn, optimizer, scheduler, nb_epoch,
         print(message)
         print(log_dict)
         if (epoch + 1) % 5 == 0:
-            save(model, epoch + 1, save_model_to)
+            save(cartoon_encoder, epoch + 1, save_model_to)
 
 
 def class_accuracy(output, target, topk=(1,)):
@@ -88,8 +88,9 @@ def retrieval_accuracy(sims, flags, thres_step=1e-2):
     return best_thres, acc 
 
 
-def train_epoch(train_loader, model, loss_fn, optimizer, device, log_interval):
-    model.train()
+def train_epoch(train_loader, cartoon_encoder, face_encoder, 
+                loss_fn, optimizer, device, log_interval):
+    cartoon_encoder.train()
     total_loss = 0
 
     for batch_idx, (data, target) in enumerate(train_loader):
@@ -103,10 +104,18 @@ def train_epoch(train_loader, model, loss_fn, optimizer, device, log_interval):
 
         optimizer.zero_grad()
         if loss_fn.cross_entropy_flag:
-            output_embedding, output_cross_entropy = model(*data)
+            # ! deprecated 
+            output_embedding, output_cross_entropy = cartoon_encoder(*data)
             blended_loss, losses = loss_fn.calculate_loss(target, output_embedding, output_cross_entropy)
         else:
-            output_embedding = model(*data)
+            # TODO: 
+            #   1. encode cartoons with cartoon_encoder 
+            #   2. encode faces with face_encoder 
+            #   3. calculate the blended_loss(n-pair loss + angular oss) with
+            #       - anchors=cartoons
+            #       - positives=face pictures of the same person as anchors
+            #       - negatives= other peoples' face pictures 
+            output_embedding = cartoon_encoder(*data)
             blended_loss, losses = loss_fn.calculate_loss(target, output_embedding)
         total_loss += blended_loss.item()
         blended_loss.backward()
