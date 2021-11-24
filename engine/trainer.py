@@ -93,20 +93,21 @@ def train_epoch(train_loader, cartoon_encoder, face_encoder,
     cartoon_encoder.train()
     total_loss = 0
 
-    for batch_idx, (data, target) in enumerate(train_loader):
+    for batch_idx, (faces, cartoons, target) in enumerate(train_loader):
         target = target if len(target) > 0 else None
-        if not type(data) in (tuple, list):
-            data = (data,)
+        
+        faces = faces.to(device)
+        cartoons = cartoons.to(device)
 
-        data = tuple(d.to(device) for d in data)
         if target is not None:
             target = target.to(device)
 
         optimizer.zero_grad()
         if loss_fn.cross_entropy_flag:
-            # ! deprecated 
-            output_embedding, output_cross_entropy = cartoon_encoder(*data)
-            blended_loss, losses = loss_fn.calculate_loss(target, output_embedding, output_cross_entropy)
+            # ! deprecated
+            assert(False) 
+            # output_embedding, output_cross_entropy = cartoon_encoder(*data)
+            # blended_loss, losses = loss_fn.calculate_loss(target, output_embedding, output_cross_entropy)
         else:
             # TODO: 
             #   1. encode cartoons with cartoon_encoder 
@@ -115,8 +116,15 @@ def train_epoch(train_loader, cartoon_encoder, face_encoder,
             #       - anchors=cartoons
             #       - positives=face pictures of the same person as anchors
             #       - negatives= other peoples' face pictures 
-            output_embedding = cartoon_encoder(*data)
-            blended_loss, losses = loss_fn.calculate_loss(target, output_embedding)
+            cartoon_embeddings = cartoon_encoder(cartoons)
+            faces_embeddings = face_encoder(faces)
+
+            assert(cartoon_embeddings.shape == faces_embeddings.shape)
+
+            output_embeddings = torch.cat([faces_embeddings, cartoon_embeddings], dim=0)
+
+            blended_loss, losses = loss_fn.calculate_loss(
+                target, output_embeddings)
         total_loss += blended_loss.item()
         blended_loss.backward()
 
@@ -125,7 +133,7 @@ def train_epoch(train_loader, cartoon_encoder, face_encoder,
         # Print log
         if batch_idx % log_interval == 0:
             message = 'Train: [{}/{} ({:.0f}%)]'.format(
-                batch_idx * len(data[0]), len(train_loader.dataset), 100. * batch_idx / len(train_loader))
+                batch_idx * 2 * len(faces[0]), len(train_loader.dataset), 100. * batch_idx / len(train_loader))
             for name, value in losses.items():
                 message += '\t{}: {:.6f}'.format(name, np.mean(value))
  
