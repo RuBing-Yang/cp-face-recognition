@@ -10,7 +10,7 @@ import argparse
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.backends.cudnn import cudnn
+from torch.backends import cudnn
 
 import torchvision
 from torchvision import transforms
