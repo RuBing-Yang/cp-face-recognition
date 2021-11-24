@@ -4,9 +4,14 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, IterableDataset
 from torchvision import transforms, datasets
 from PIL import Image
+
+from typing import TypeVar, Generic, Iterable, Iterator, Sequence, List, Optional, Tuple
+
+T_co = TypeVar('T_co', covariant=True)
+T = TypeVar('T')
 
 # TODO: #dataloading
 def train_data_loader(data_path, img_size, use_augment=False):
@@ -61,6 +66,35 @@ def test_data_generator(data_path, img_size):
 
     return test_image_dataset
 
+
+class ParalelleDataset(Dataset):
+    """
+    Requires: 
+        - every sub-dataset share the same labels 
+        - every subdataset is instance of `torchvsion.VisionDataset` which is not assigned below 
+    Args:
+        datasets (sequence): List of datasets to be concatenated
+    """
+    datasets: List[Dataset[T_co]]
+    cumulative_sizes: List[int]
+
+    def __init__(self, datasets: Iterable[Dataset]) -> None:
+        super(ParalelleDataset, self).__init__()
+        assert len(datasets) > 0, 'datasets should not be an empty iterable'  # type: ignore
+        self.datasets = list(datasets)
+        for d in self.datasets:
+            assert not isinstance(d, IterableDataset), "ConcatDataset does not support IterableDataset"
+
+    def __getitem__(self, index) -> Tuple[T_co]:
+        ret = []
+        for d in self.datasets[:-1]:
+            ret.append(d[index % len(d)][0])
+        ret.extend(datasets[-1])
+
+        return tuple(ret)
+
+    def __len__(self):
+        return max(map(len, self.datasets))
 
 class TestDataset(Dataset):
     def __init__(self, img_path_list, transform=None):
