@@ -113,7 +113,7 @@ model/
 data/
 
 # shell script
-train.sh
+# train.sh
 
 # figures 
 *.png
