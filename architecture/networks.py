@@ -7,7 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torchvision import models
 
-from senet import se_resnext101_32x4d
+from .senet import se_resnext101_32x4d
 
 
 class BaseNetwork(nn.Module):
