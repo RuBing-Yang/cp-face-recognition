@@ -57,6 +57,7 @@ def get_arguments():
     args = argparse.ArgumentParser()
 
     args.add_argument('--dataset-path', type=str)
+    args.add_argument('--face-encoder-path', type=str)
     args.add_argument('--model-save-dir', type=str, default='./model')
     args.add_argument('--resume-face', type=str)
     args.add_argument('--resume-all', type=str)
@@ -87,7 +88,7 @@ def get_arguments():
                       help='margin m in Arcface.')
     
     # Mode selection
-    args.add_argument('--mode', type=str, choice=['train-face', 'train-all', 'test'], 
+    args.add_argument('--mode', type=str, choices=['train-face', 'train-all', 'test'], 
                       required=True, help='mode selection')
     
     return args.parse_args()

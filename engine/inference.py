@@ -4,7 +4,7 @@ from __future__ import division
 from __future__ import print_function
 
 from torch.utils.data import DataLoader
-from data_loader import test_data_generator
+from utils.dataloader import test_data_generator
 
 import numpy as np
 
