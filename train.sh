@@ -7,4 +7,5 @@ python main.py --mode train-all \
                --lr 1e-2 \
                --scheduler MultiStepLR \
                --attention \
-               --gpu 0 
+               --gpu 0 \
+               --face-encoder-path ./tc \
