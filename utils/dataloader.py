@@ -4,6 +4,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import torch
 from torch.utils.data import Dataset, IterableDataset
 from torchvision import transforms, datasets
 from PIL import Image
@@ -15,6 +16,8 @@ T = TypeVar('T')
 
 # TODO: #dataloading
 def train_data_loader(data_path, img_size, use_augment=False):
+    normalize = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+    
     if use_augment:
         data_transforms = transforms.Compose([
             transforms.RandomOrder([
@@ -29,19 +32,41 @@ def train_data_loader(data_path, img_size, use_augment=False):
             transforms.RandomResizedCrop(img_size),
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
-            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+            normalize    
         ])
     else:
         data_transforms = transforms.Compose([
             transforms.RandomResizedCrop(img_size),
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
-            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+            normalize
         ])
 
-    image_dataset = datasets.ImageFolder(data_path, data_transforms)
+    faces_dataset = datasets.ImageFolder(data_path, data_transforms,
+        is_valid_file=lambda path: os.path.basename(path)[0].lower() == 'p'
+    )
 
-    return image_dataset
+    ori_cartoon_dataset = datasets.ImageFolder(data_path, data_transforms,
+        is_valid_file=lambda path: os.path.basename(path)[0].lower() == 'c'
+    )
+
+    grey_transforms = transforms.Compose([
+        transforms.Grayscale(num_output_channels=3),
+        transforms.RandomResizedCrop(img_size),
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+        normalize
+    ])
+
+    grey_cartoon_dataset = datasets.ImageFolder(data_path, data_transforms,
+        is_valid_file=lambda path: os.path.basename(path)[0].lower() == 'c'
+    )
+
+    cartoon_dataset = torch.utils.data.ConcatDataset(
+        [ori_cartoon_dataset, grey_cartoon_dataset]
+    )
+
+    return ParalelleDataset([faces_dataset, cartoon_dataset])
 
 
 def test_data_loader(data_path):
