@@ -113,9 +113,9 @@ class NPairLoss(nn.Module):
             label_mask = (labels == label)
             label_indices = np.where(label_mask)[0]
             if len(label_indices) < 2:
-                continue
-            anchor, positive = np.random.choice(label_indices, 2, replace=False)
-            n_pairs.append([anchor, positive])
+                assert(False, "Only face or cartoon is provided.")
+            # anchor, positive = label_indices # np.random.choice(label_indices, 2, replace=False)
+            n_pairs.append(label_indices)
 
         n_pairs = np.array(n_pairs)
 
