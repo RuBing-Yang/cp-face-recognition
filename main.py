@@ -10,6 +10,7 @@ import argparse
 import torch
 import torch.nn as nn
 import torch.optim as optim
+
 from torch.backends import cudnn
 
 import torchvision
@@ -27,7 +28,7 @@ from architecture.metric import ArcMarginProduct
 from losses import BlendedLoss, MAIN_LOSS_CHOICES
 
 from engine.trainer import fit, train, validate
-from engine.inference import retrieve
+# from engine.inference import retrieve
 
 from facenet_pytorch import InceptionResnetV1
 
@@ -71,14 +72,14 @@ def get_arguments():
                       default='seresnext')
     args.add_argument('--input-size', type=int, default=112, help='size of input image')
     args.add_argument('--num-classes', type=int, default=64, help='number of classes for batch sampler')
-    args.add_argument('--num-samples', type=int, default=4, help='number of samples per class for batch sampler')
+    args.add_argument('--num-samples', type=int, default=2, help='number of samples per class for batch sampler')
     args.add_argument('--embedding-dim', type=int, default=512, help='size of embedding dimension')
     args.add_argument('--feature-extracting', type=bool, default=False)
-    args.add_argument('--use-pretrained', type=bool, default=True)
+    args.add_argument('--use-pretrained', action='store_true', default=True)
     args.add_argument('--lr', type=float, default=1e-4)
     args.add_argument('--scheduler', type=str, choices=['StepLR', 'MultiStepLR'])
     args.add_argument('--attention', action='store_true')
-    args.add_argument('--loss-type', type=str, choices=MAIN_LOSS_CHOICES)
+    args.add_argument('--loss-type', type=str, default='n-pair-angular', choices=MAIN_LOSS_CHOICES)
     args.add_argument('--cross-entropy', action='store_true')
     args.add_argument('--use-augmentation', action='store_true')
 
@@ -88,6 +89,7 @@ def get_arguments():
                       help='margin m in Arcface.')
     
     # Mode selection
+
     args.add_argument('--mode', type=str, choices=['train-face', 'train-all', 'test'], 
                       required=True, help='mode selection')
     
@@ -102,15 +104,16 @@ def main(config):
     if not os.path.exists(config.model_save_dir):
         os.makedirs(config.model_save_dir)
 
-    if ((config.mode == 'train-all' or 
-         config.mode == 'test') and 
-         config.face_encoder_path is None):
-        raise ValueError('Trained face encoder is required.')
+    # if ((config.mode == 'train-all' or 
+    #      config.mode == 'test') and 
+    #      config.face_encoder_path is None):
+    #     raise ValueError('Trained face encoder is required.')
 
     dataset_path = config.dataset_path
 
     # Model parameters
     model_name = config.model
+    workers = config.workers
     input_size = config.input_size
     embedding_dim = config.embedding_dim
     feature_extracting = config.feature_extracting
@@ -120,7 +123,7 @@ def main(config):
     # Training parameters
     nb_epoch = config.epochs
     loss_type = config.loss_type
-    cross_entropy_flag = config.cross_entropy
+    cross_entropy_flag = False # config.cross_entropy
     scheduler_name = config.scheduler
     lr = config.lr
 
@@ -134,6 +137,8 @@ def main(config):
     start_epoch = 0
 
     if config.mode == 'train-face':
+        assert(False)
+
          # create model
         print("=> creating backbone '{}'".format(model_name))
         net = EmbeddingNetwork(model_name=model_name,
@@ -296,11 +301,10 @@ def main(config):
         
         """ Load data """
         print('dataset path', dataset_path)
-        train_dataset_path = dataset_path + '/train/train_data'
+        train_dataset_path = os.path.join(dataset_path, 'train')
 
-        face_dataset, cartoon_dataset = train_data_loader(data_path=train_dataset_path, img_size=input_size,
-                                                       use_augment=use_augmentation)
-
+        img_dataset = train_data_loader(data_path=train_dataset_path, img_size=input_size,
+                                        use_augment=use_augmentation)
         # TODO: #dataloading - implement dataloading
         #   yield a batch of data as following
         #   size: (N, channel, height, width)        
@@ -309,7 +313,7 @@ def main(config):
         train_batch_sampler = BalancedBatchSampler(img_dataset, n_classes=num_classes, n_samples=num_samples)
         online_train_loader = torch.utils.data.DataLoader(img_dataset,
                                                           batch_sampler=train_batch_sampler,
-                                                          num_workers=4,
+                                                          num_workers=workers,
                                                           pin_memory=True)
 
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
