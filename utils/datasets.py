@@ -8,7 +8,6 @@ import torch
 from torch.utils.data import DataLoader
 from torch.utils.data.sampler import BatchSampler
 
-# TODO: #dataloading - implement dataloading following the instructions in main.py
 class BalancedBatchSampler(BatchSampler):
     """
     BatchSampler - from a MNIST-like dataset, samples n_classes and within these classes samples n_samples.

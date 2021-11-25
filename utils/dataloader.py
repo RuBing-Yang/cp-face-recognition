@@ -18,7 +18,6 @@ from typing import TypeVar, Generic, Iterable, Iterator, Sequence, List, Optiona
 T_co = TypeVar('T_co', covariant=True)
 T = TypeVar('T')
 
-# TODO: #dataloading
 def train_data_loader(data_path, img_size, use_augment=False):
     normalize = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
     
