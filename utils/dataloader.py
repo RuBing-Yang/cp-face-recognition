@@ -5,11 +5,15 @@ from __future__ import print_function
 
 import os
 import torch
+import bisect
+import numpy as np
 from torch.utils.data import Dataset, IterableDataset
-from torchvision import transforms, datasets
+from torchvision import transforms
+from torchvision.datasets import ImageFolder, DatasetFolder
 from PIL import Image
 
 from typing import TypeVar, Generic, Iterable, Iterator, Sequence, List, Optional, Tuple
+
 
 T_co = TypeVar('T_co', covariant=True)
 T = TypeVar('T')
@@ -18,7 +22,8 @@ T = TypeVar('T')
 def train_data_loader(data_path, img_size, use_augment=False):
     normalize = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
     
-    if use_augment:
+    if use_augment:\
+        # TODO: augment parameters need to be tuned
         data_transforms = transforms.Compose([
             transforms.RandomOrder([
                 transforms.RandomApply([transforms.ColorJitter(contrast=0.5)], .5),
@@ -29,36 +34,36 @@ def train_data_loader(data_path, img_size, use_augment=False):
             ]),
             transforms.RandomApply([transforms.ColorJitter(brightness=0.125)], .5),
             transforms.RandomApply([transforms.RandomRotation(15)], .5),
-            transforms.RandomResizedCrop(img_size),
+            transforms.Resize((img_size, img_size)),
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
             normalize    
         ])
     else:
         data_transforms = transforms.Compose([
-            transforms.RandomResizedCrop(img_size),
+            transforms.Resize((img_size, img_size)),
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
             normalize
         ])
 
-    faces_dataset = datasets.ImageFolder(data_path, data_transforms,
+    faces_dataset = ImageFolder(data_path, data_transforms,
         is_valid_file=lambda path: os.path.basename(path)[0].lower() == 'p'
     )
 
-    ori_cartoon_dataset = datasets.ImageFolder(data_path, data_transforms,
+    ori_cartoon_dataset = ImageFolder(data_path, data_transforms,
         is_valid_file=lambda path: os.path.basename(path)[0].lower() == 'c'
     )
 
     grey_transforms = transforms.Compose([
         transforms.Grayscale(num_output_channels=3),
-        transforms.RandomResizedCrop(img_size),
+        transforms.Resize((img_size, img_size)),
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
         normalize
     ])
 
-    grey_cartoon_dataset = datasets.ImageFolder(data_path, data_transforms,
+    grey_cartoon_dataset = ImageFolder(data_path, data_transforms,
         is_valid_file=lambda path: os.path.basename(path)[0].lower() == 'c'
     )
 
@@ -66,7 +71,7 @@ def train_data_loader(data_path, img_size, use_augment=False):
         [ori_cartoon_dataset, grey_cartoon_dataset]
     )
 
-    return ParalelleDataset([faces_dataset, cartoon_dataset])
+    return AlignedDataset([faces_dataset, cartoon_dataset])
 
 
 def test_data_loader(data_path):
@@ -92,7 +97,7 @@ def test_data_generator(data_path, img_size):
     return test_image_dataset
 
 
-class ParalelleDataset(Dataset):
+class AlignedDataset(Dataset):
     """
     Requires: 
         - every sub-dataset share the same labels 
@@ -103,23 +108,69 @@ class ParalelleDataset(Dataset):
     datasets: List[Dataset[T_co]]
     cumulative_sizes: List[int]
 
-    def __init__(self, datasets: Iterable[Dataset]) -> None:
-        super(ParalelleDataset, self).__init__()
-        assert len(datasets) > 0, 'datasets should not be an empty iterable'  # type: ignore
+    def cumsum(self):
+        r, s = [], 0
+        for target in self.targets_set:
+            l = max(map(lambda x: len(x[target]), self.targets_indices_map))
+            r.append(l + s)
+            s += l
+        return r
+
+    def targets_to_indices(self, dataset):
+        targets_list = []
+        for _, target in dataset:
+            targets_list.append(target)
+        targets = torch.LongTensor(targets_list).numpy()
+        
+        return {target: np.where(targets == target)[0]
+                    for target in self.targets_set}
+        
+    
+    def __init__(self, datasets: Iterable[DatasetFolder]) -> None:
+        super(AlignedDataset, self).__init__()
+        assert len(datasets) == 2, \
+               'currently only support 2 datasets to align'
+        
+        assert len(datasets) > 0, \
+               'datasets should not be an empty iterable'  # type: ignore
         self.datasets = list(datasets)
+        
+        assert hasattr(self.datasets[0], 'targets'), \
+               "first dataset shold have attiribute 'targets'"
+        self.targets_set = set(self.datasets[0].targets)
+
         for d in self.datasets:
-            assert not isinstance(d, IterableDataset), "ConcatDataset does not support IterableDataset"
+            assert not isinstance(d, IterableDataset), \
+                   "AlignedDataset not support IterableDataset"
+        
+        self.targets_indices_map = \
+            [self.targets_to_indices(d) for d in self.datasets]
+
+        self.cumulative_sizes = self.cumsum()
+
 
     def __getitem__(self, index) -> Tuple[T_co]:
-        ret = []
-        for d in self.datasets[:-1]:
-            ret.append(d[index % len(d)][0])
-        ret.extend(datasets[-1])
+        if index < 0:
+            if -index > len(self):
+                raise ValueError("absolute value of index should not exceed dataset length")
+            index = len(self) + index
+        target = bisect.bisect_right(self.cumulative_sizes, index)
+        if target == 0:
+            sample_idx = index
+        else:
+            sample_idx = index - self.cumulative_sizes[target - 1]
+        
+        item = []
+        for d, m in zip(self.datasets, self.targets_indices_map):
+            l = len(m[target])
+            item.append(d[m[target][sample_idx % l]][0])
+        item.append(target)
 
-        return tuple(ret)
+        return tuple(item)
 
     def __len__(self):
-        return max(map(len, self.datasets))
+        return self.cumulative_sizes[-1]
+
 
 class TestDataset(Dataset):
     def __init__(self, img_path_list, transform=None):
