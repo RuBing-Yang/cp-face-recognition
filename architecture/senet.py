@@ -323,13 +323,14 @@ class SENet(nn.Module):
             downsample_padding=downsample_padding
         )
 
+        # TODO: check whether new network structure works  
+
         self.in_layer = nn.Sequential(
-            nn.BatchNorm2d(512),
+            nn.BatchNorm2d(512 * block.expansion),
             nn.Dropout(dropout_p),
             nn.Flatten(),
         )
 
-        # FIXME: dimension unmatched between in_layer -> last_linear
         self.last_linear = nn.Linear(512 * block.expansion, num_classes)
 
     def _make_layer(self, block, planes, blocks, groups, reduction, stride=1,
