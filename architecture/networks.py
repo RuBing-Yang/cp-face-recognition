@@ -79,12 +79,8 @@ class EmbeddingNetwork(BaseNetwork):
         self.cross_entropy_flag = cross_entropy_flag
         self.edge_cutting = edge_cutting
 
-        # FIXME: check list sequence
-        print(list(self.model_ft.children()))
-        # assert(False)
-
-        self.model_ft_convs = nn.Sequential(*list(self.model_ft.children())[:-1])
-        self.model_ft_embedding = nn.Sequential(*list(self.model_ft.children())[-1:])
+        self.model_ft_convs = nn.Sequential(*list(self.model_ft.children())[:-2])
+        self.model_ft_embedding = nn.Sequential(*list(self.model_ft.children())[-2:])
 
         if self.attention_flag:
             if self.model_name == 'densenet161':
@@ -101,15 +97,16 @@ class EmbeddingNetwork(BaseNetwork):
 
     def forward(self, x):
         x = self.model_ft_convs(x)
-        x = F.relu(x, inplace=True)
+        
+        x = F.relu(x, inplace=False)    # FIXME: this relu really necessary?
 
         if self.attention_flag:
             x = self.attention(x)
 
-        if self.edge_cutting:
-            x = F.adaptive_avg_pool2d(x[:, :, 1:-1, 1:-1], output_size=1).view(x.size(0), -1)
-        else:
-            x = F.adaptive_avg_pool2d(x, output_size=1).view(x.size(0), -1)
+        # if self.edge_cutting:
+        #     x = F.adaptive_avg_pool2d(x[:, :, 1:-1, 1:-1], output_size=1).view(x.size(0), -1)
+        # else:
+        #     x = F.adaptive_avg_pool2d(x, output_size=1).view(x.size(0), -1)
             # x = gem(x).view(x.size(0), -1)
         out_embedding = self.model_ft_embedding(x)
 
@@ -145,11 +142,11 @@ def initialize_model(model_name, embedding_dim, feature_extracting, use_pretrain
     elif model_name == "seresnext":
         model_ft = se_resnext101_32x4d(num_classes=1000)
         set_parameter_requires_grad(model_ft, feature_extracting)
-        num_features = 512 * 7 * 7
-        model_ft.last_linear = nn.Sequential([
+        num_features = 2048 * 4 * 4
+        model_ft.last_linear = nn.Sequential(
             nn.Linear(num_features, embedding_dim),
             nn.BatchNorm1d(embedding_dim)
-        ])  # feature normalized 
+        )  # feature normalized 
     else:
         raise ValueError
 
