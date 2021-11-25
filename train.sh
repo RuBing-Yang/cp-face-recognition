@@ -1,11 +1,13 @@
 python main.py --mode train-all \
                --dataset-path ./data/splited \
+               --workers 4 \
                --epochs 20 \
                --num-classes 16 \
                --num-samples 1 \
+               --use-augmentation \
                --use-pretrained \
                --lr 1e-2 \
-               --scheduler MultiStepLR \
                --attention \
-               --gpu 0 \
-               --face-encoder-path ./tc \
+               --scheduler MultiStepLR \
+               --save-dir ./model/facenet_seresnext \
+               --gpu 0 
