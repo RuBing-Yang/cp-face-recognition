@@ -18,11 +18,11 @@ class BalancedBatchSampler(BatchSampler):
     def __init__(self, dataset, n_classes, n_samples):
         loader = DataLoader(dataset)
         self.labels_list = []
-        for _, label in loader:
+        for *_, label in loader:
             self.labels_list.append(label)
-        self.labels = torch.LongTensor(self.labels_list)
-        self.labels_set = list(set(self.labels.numpy()))
-        self.label_to_indices = {label: np.where(self.labels.numpy() == label)[0]
+        self.labels = torch.LongTensor(self.labels_list).numpy()
+        self.labels_set = list(set(self.labels))
+        self.label_to_indices = {label: np.where(self.labels == label)[0]
                                  for label in self.labels_set}
         for l in self.labels_set:
             np.random.shuffle(self.label_to_indices[l])
@@ -32,7 +32,7 @@ class BalancedBatchSampler(BatchSampler):
         self.n_samples = n_samples
         self.dataset = dataset
         self.batch_size = self.n_samples * self.n_classes
-
+        
     def __iter__(self):
         self.count = 0
         while self.count + self.batch_size < len(self.dataset):
