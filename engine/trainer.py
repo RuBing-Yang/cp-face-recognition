@@ -12,14 +12,23 @@ from utils.meter import Meter, AverageMeter, ProgressMeter
 def save(model, ckpt_num, dir_name):
     os.makedirs(dir_name, exist_ok=True)
     if torch.cuda.device_count() > 1:
-        torch.save(model.module.state_dict(), os.path.join(dir_name, 'model_%s' % ckpt_num))
+        torch.save(
+            model.module.state_dict(), 
+            os.path.join(dir_name, 'model_%s.pth.tar' % ckpt_num)
+        )
     else:
-        torch.save(model.state_dict(), os.path.join(dir_name, 'model_%s' % ckpt_num))
+        torch.save(
+            model.state_dict(), 
+            os.path.join(dir_name, 'model_%s.pth.tar' % ckpt_num)
+        )
     print('model saved!')
 
 
-def fit(train_loader, cartoon_encoder, face_encoder, loss_fn, optimizer, scheduler, nb_epoch,
-        device, log_interval, start_epoch=0, save_model_to='/tmp/save_model_to'):
+def fit(train_loader, nb_epoch,  
+        cartoon_encoder, face_encoder, 
+        loss_fn, optimizer, scheduler, 
+        device, log_interval, save_interval, 
+        start_epoch=0, save_model_to='./tmp/save_model_to'):
     """
     Loaders, model, loss function and metrics should work together for a given task,
     i.e. The model should be able to process data output of loaders,
@@ -40,7 +49,8 @@ def fit(train_loader, cartoon_encoder, face_encoder, loss_fn, optimizer, schedul
         scheduler.step()
 
         # Train stage
-        train_loss = train_epoch(train_loader, cartoon_encoder, loss_fn, optimizer, device, log_interval)
+        train_loss = train_epoch(train_loader, cartoon_encoder, face_encoder, 
+                                 loss_fn, optimizer, device, log_interval)
 
         log_dict = {'epoch': epoch + 1,
                     'epoch_total': nb_epoch,
@@ -51,7 +61,7 @@ def fit(train_loader, cartoon_encoder, face_encoder, loss_fn, optimizer, schedul
  
         print(message)
         print(log_dict)
-        if (epoch + 1) % 5 == 0:
+        if (epoch + 1) % save_interval == 0:
             save(cartoon_encoder, epoch + 1, save_model_to)
 
 
@@ -93,14 +103,14 @@ def train_epoch(train_loader, cartoon_encoder, face_encoder,
     cartoon_encoder.train()
     total_loss = 0
 
-    for batch_idx, (faces, cartoons, target) in enumerate(train_loader):
-        target = target if len(target) > 0 else None
-        
+    for batch_idx, (faces, cartoons, targets) in enumerate(train_loader):
+        targets = targets if len(targets) > 0 else None
+
         faces = faces.to(device)
         cartoons = cartoons.to(device)
 
-        if target is not None:
-            target = target.to(device)
+        if targets is not None:
+            targets = targets.to(device)
 
         optimizer.zero_grad()
         if loss_fn.cross_entropy_flag:
@@ -109,22 +119,23 @@ def train_epoch(train_loader, cartoon_encoder, face_encoder,
             # output_embedding, output_cross_entropy = cartoon_encoder(*data)
             # blended_loss, losses = loss_fn.calculate_loss(target, output_embedding, output_cross_entropy)
         else:
-            # TODO: 
+            # NOTE: embedding
             #   1. encode cartoons with cartoon_encoder 
             #   2. encode faces with face_encoder 
             #   3. calculate the blended_loss(n-pair loss + angular oss) with
             #       - anchors=cartoons
             #       - positives=face pictures of the same person as anchors
-            #       - negatives= other peoples' face pictures 
+            #       - negatives= other peoples' face pictures
             cartoon_embeddings = cartoon_encoder(cartoons)
             faces_embeddings = face_encoder(faces)
 
-            assert(cartoon_embeddings.shape == faces_embeddings.shape)
-
-            output_embeddings = torch.cat([faces_embeddings, cartoon_embeddings], dim=0)
-
+            assert cartoon_embeddings.shape == faces_embeddings.shape, \
+                   "both picture need to be projected into same space"
+            
+            output_embeddings = torch.cat([cartoon_embeddings, faces_embeddings], dim=0)
+            
             blended_loss, losses = loss_fn.calculate_loss(
-                target, output_embeddings)
+                targets, output_embeddings)
         total_loss += blended_loss.item()
         blended_loss.backward()
 
@@ -133,7 +144,7 @@ def train_epoch(train_loader, cartoon_encoder, face_encoder,
         # Print log
         if batch_idx % log_interval == 0:
             message = 'Train: [{}/{} ({:.0f}%)]'.format(
-                batch_idx * 2 * len(faces[0]), len(train_loader.dataset), 100. * batch_idx / len(train_loader))
+                batch_idx * len(faces[0]), len(train_loader.dataset), 100. * batch_idx / len(train_loader)) # FIXME: progress counting error
             for name, value in losses.items():
                 message += '\t{}: {:.6f}'.format(name, np.mean(value))
  
@@ -257,7 +268,6 @@ def validate(val_loader, val_dataset_size,
     # measure accuracy and record loss
     thres, acc = retrieval_accuracy(sims, flags, thres_step=5e-3)
 
-    # TODO: this should also be done with the ProgressMeter
     print(f'Epoch: [{epoch}] * Threshold {thres:6.3f}\tAcc {acc*100:4.2f}')
 
     return thres, acc
