@@ -10,7 +10,6 @@ import argparse
 import torch
 import torch.nn as nn
 import torch.optim as optim
-
 from torch.backends import cudnn
 
 import torchvision
@@ -28,7 +27,7 @@ from architecture.metric import ArcMarginProduct
 from losses import BlendedLoss, MAIN_LOSS_CHOICES
 
 from engine.trainer import fit, train, validate
-# from engine.inference import retrieve
+# from engine.inference import retrieve # TODO: implement inference.py
 
 from facenet_pytorch import InceptionResnetV1
 
@@ -58,10 +57,11 @@ def get_arguments():
     args = argparse.ArgumentParser()
 
     args.add_argument('--dataset-path', type=str)
-    args.add_argument('--face-encoder-path', type=str)
-    args.add_argument('--model-save-dir', type=str, default='./model')
-    args.add_argument('--resume-face', type=str)
-    args.add_argument('--resume-all', type=str)
+    args.add_argument('--save-dir', type=str, default='./model')
+    args.add_argument('--face-encoder', type=str, 
+                      help='checkpoint path of face encoder.')   # deprecated
+    args.add_argument('--cartoon-encoder', type=str,
+                      help='checkpoint path of cartoon encoder.')
     args.add_argument('--workers', type=int, default=4)
     args.add_argument('--gpu', type=int, default=0)
 
@@ -72,7 +72,7 @@ def get_arguments():
                       default='seresnext')
     args.add_argument('--input-size', type=int, default=112, help='size of input image')
     args.add_argument('--num-classes', type=int, default=64, help='number of classes for batch sampler')
-    args.add_argument('--num-samples', type=int, default=2, help='number of samples per class for batch sampler')
+    args.add_argument('--num-samples', type=int, default=1, help='number of samples per class for batch sampler')
     args.add_argument('--embedding-dim', type=int, default=512, help='size of embedding dimension')
     args.add_argument('--feature-extracting', type=bool, default=False)
     args.add_argument('--use-pretrained', action='store_true', default=True)
@@ -89,9 +89,10 @@ def get_arguments():
                       help='margin m in Arcface.')
     
     # Mode selection
-
     args.add_argument('--mode', type=str, choices=['train-face', 'train-all', 'test'], 
                       required=True, help='mode selection')
+    args.add_argument('--log-interval', type=int, default=50)
+    args.add_argument('--save-interval', type=int, default=250)
     
     return args.parse_args()
 
@@ -101,12 +102,12 @@ best_acc1 = 0
 def main(config):
     global best_acc1
 
-    if not os.path.exists(config.model_save_dir):
-        os.makedirs(config.model_save_dir)
+    if not os.path.exists(config.save_dir):
+        os.makedirs(config.save_dir)
 
     # if ((config.mode == 'train-all' or 
     #      config.mode == 'test') and 
-    #      config.face_encoder_path is None):
+    #      config.face_encoder is None):
     #     raise ValueError('Trained face encoder is required.')
 
     dataset_path = config.dataset_path
@@ -133,7 +134,8 @@ def main(config):
     use_augmentation = config.use_augmentation
 
     infer_batch_size = 64
-    log_interval = 50
+    log_interval = config.log_interval
+    save_interval = config.save_interval
     start_epoch = 0
 
     if config.mode == 'train-face':
@@ -200,7 +202,6 @@ def main(config):
         traindir = os.path.join(dataset_path, 'train')  
         valdir = os.path.join(dataset_path, 'val')
         
-        # TODO: add data properties
         normalize = transforms.Normalize(mean=[0.5, 0.5, 0.5],
                                          std=[0.5, 0.5, 0.5])
 
@@ -269,7 +270,7 @@ def main(config):
 
             if epoch % config.save_freq == 0:
                 filename="checkpoint-{:d}.pth.tar".format(epoch)
-                path = os.path.join(config.model_save_dir, filename)
+                path = os.path.join(config.save_dir, filename)
                 save_checkpoint({
                     'type'              :   'face_encoder',
                     'epoch'             :   epoch + 1,
@@ -286,26 +287,25 @@ def main(config):
     """ Model """
     # load facenet as face-encoder 
     face_encoder = InceptionResnetV1(pretrained='vggface2').eval()  # TODO: replace with iresnet100-arcface later 
-    model = EmbeddingNetwork(model_name=model_name,
-                             embedding_dim=embedding_dim,
-                             feature_extracting=feature_extracting,
-                             use_pretrained=use_pretrained,
-                             attention_flag=attention_flag,
-                             cross_entropy_flag=cross_entropy_flag)
+    cartoon_encoder = EmbeddingNetwork(model_name=model_name,
+                                       embedding_dim=embedding_dim,
+                                       feature_extracting=feature_extracting,
+                                       use_pretrained=use_pretrained,
+                                       attention_flag=attention_flag,
+                                       cross_entropy_flag=cross_entropy_flag)
 
-    if torch.cuda.device_count() > 1:
-        model = nn.DataParallel(model)
+    if torch.cuda.device_count() > 1: 
+        face_encoder = nn.DataParallel(face_encoder).eval()
+        cartoon_encoder = nn.DataParallel(cartoon_encoder)
 
     if config.mode == 'train-all':
-        # TODO: not implemented yet
-        
-        """ Load data """
-        print('dataset path', dataset_path)
-        train_dataset_path = os.path.join(dataset_path, 'train')
 
+        """ Load data """
+        train_dataset_path = os.path.join(dataset_path, 'train')
+        
         img_dataset = train_data_loader(data_path=train_dataset_path, img_size=input_size,
                                         use_augment=use_augmentation)
-        # TODO: #dataloading - implement dataloading
+        # NOTE: dataloading
         #   yield a batch of data as following
         #   size: (N, channel, height, width)        
         #   anchor(face image) * 1, positive(cartoon images) * 1, negatives(cartoon images) * (N - 2)
@@ -316,36 +316,39 @@ def main(config):
                                                           num_workers=workers,
                                                           pin_memory=True)
 
-        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        device = torch.device(f"cuda:{config.gpu}" if torch.cuda.is_available() else "cpu")
 
         # Gather the parameters to be optimized/updated.
-        params_to_update = model.parameters()
+        params_to_update = cartoon_encoder.parameters()
         print("Params to learn:")
         if feature_extracting:
-            params_to_update = []
-            for name, param in model.named_parameters():
+            params_to_update = []   
+            for name, param in cartoon_encoder.named_parameters():
                 if param.requires_grad:
                     params_to_update.append(param)
                     print("\t", name)
         else:
-            for name, param in model.named_parameters():
+            for name, param in cartoon_encoder.named_parameters():
                 if param.requires_grad:
                     print("\t", name)
 
         # Send the model to GPU
         face_encoder = face_encoder.to(device)
-        model = model.to(device)
+        cartoon_encoder = cartoon_encoder.to(device)
 
-        # FIXME: parameters passed are less than needed
-        #        change model.parameters() to param_to_update  
-        optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=1e-4)
+        optimizer = optim.Adam(params_to_update, lr=lr, weight_decay=1e-4)
         if scheduler_name == 'StepLR':
             scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=8, gamma=0.1)
         elif scheduler_name == 'MultiStepLR':
+            # TODO: tuing the lr decay for better optimization
             if use_augmentation:
-                scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[20, 30], gamma=0.1)
+                scheduler = optim.lr_scheduler.MultiStepLR(
+                    optimizer, milestones=[20, 30], gamma=0.1
+                )
             else:
-                scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[10, 15, 20], gamma=0.1)
+                scheduler = optim.lr_scheduler.MultiStepLR(
+                    optimizer, milestones=[10, 15, 20], gamma=0.1
+                )
         else:
             raise ValueError('Invalid scheduler')
 
@@ -353,16 +356,19 @@ def main(config):
         loss_fn = BlendedLoss(loss_type, cross_entropy_flag)
 
         # Train (fine-tune) model
-        fit(online_train_loader, model, loss_fn, optimizer, scheduler, nb_epoch,
-            device=device, log_interval=log_interval, save_model_to=config.model_save_dir)
+        fit(online_train_loader, nb_epoch,
+            cartoon_encoder, face_encoder, 
+            loss_fn, optimizer, scheduler, 
+            device, log_interval, save_interval,
+            save_model_to=config.save_dir)
     
     elif config.mode == 'test':
         # TODO: not implemented yet
         
-        test_dataset_path = dataset_path + '/test/test_data'
+        test_dataset_path = os.path.join(dataset_path + '/test/test_data')
         queries, db = test_data_loader(test_dataset_path)
-        model = load(model, file_path=config.model_to_test)
-        result_dict = infer(model, queries, db)
+        cartoon_encoder = load(cartoon_encoder, file_path=config.cartoon_encoder)
+        result_dict = infer(face_encoder, cartoon_encoder, queries, db)
 
         # TODO: save inference result
     else:
