@@ -66,6 +66,7 @@ def get_arguments():
     args.add_argument('--gpu', type=int, default=0)
 
     # Hyperparameters
+    args.add_argument('--start-epoch', type=int, default=0)
     args.add_argument('--epochs', type=int, default=20)
     args.add_argument('--model', type=str,
                       choices=['densenet161', 'resnet101',  'inceptionv3', 'seresnext'],
@@ -122,6 +123,7 @@ def main(config):
     attention_flag = config.attention
 
     # Training parameters
+    start_epoch = config.start_epoch
     nb_epoch = config.epochs
     loss_type = config.loss_type
     cross_entropy_flag = False # config.cross_entropy
@@ -294,6 +296,9 @@ def main(config):
                                        attention_flag=attention_flag,
                                        cross_entropy_flag=cross_entropy_flag)
 
+    if config.cartoon_encoder is not None :
+        load(cartoon_encoder, file_path=config.cartoon_encoder)
+
     if torch.cuda.device_count() > 1: 
         face_encoder = nn.DataParallel(face_encoder).eval()
         cartoon_encoder = nn.DataParallel(cartoon_encoder)
@@ -360,6 +365,7 @@ def main(config):
             cartoon_encoder, face_encoder, 
             loss_fn, optimizer, scheduler, 
             device, log_interval, save_interval,
+            start_epoch=start_epoch,
             save_model_to=config.save_dir)
     
     elif config.mode == 'test':
