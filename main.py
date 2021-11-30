@@ -296,7 +296,7 @@ def main(config):
                                        attention_flag=attention_flag,
                                        cross_entropy_flag=cross_entropy_flag)
 
-    if config.cartoon_encoder is not None :
+    if config.cartoon_encoder is not None:
         load(cartoon_encoder, file_path=config.cartoon_encoder)
 
     if torch.cuda.device_count() > 1: 
