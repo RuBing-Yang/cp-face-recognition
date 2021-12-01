@@ -46,7 +46,6 @@ def fit(train_loader, nb_epoch,
         scheduler.step()
 
     for epoch in range(start_epoch, nb_epoch):
-        scheduler.step()
 
         # Train stage
         train_loss = train_epoch(train_loader, cartoon_encoder, face_encoder, 
@@ -56,6 +55,8 @@ def fit(train_loader, nb_epoch,
                     'epoch_total': nb_epoch,
                     'loss': float(train_loss),
                     }
+
+        scheduler.step()
 
         message = 'Epoch: {}/{}. Train set: Average loss: {:.4f}'.format(epoch + 1, nb_epoch, train_loss)
  
