@@ -21,3 +21,4 @@ We utilized the following post-processing techniques in the inference phase.
 - L2-normalization
 - [Average query expansion](https://www.robots.ox.ac.uk/~vgg/publications/papers/chum07b.pdf)
 - [Database-side feature augmentation](https://arxiv.org/pdf/1610.07940.pdf)
+
