@@ -117,3 +117,7 @@ data/
 
 # figures 
 *.png
+
+# training script
+trian.sh
+*.bat
