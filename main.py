@@ -4,8 +4,11 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+# from posix import PRIO_USER
 import shutil
 import argparse
+import csv
+import json
 
 import torch
 import torch.nn as nn
@@ -27,7 +30,7 @@ from architecture.metric import ArcMarginProduct
 from losses import BlendedLoss, MAIN_LOSS_CHOICES
 
 from engine.trainer import fit, train, validate
-# from engine.inference import retrieve # TODO: implement inference.py
+from engine.inference import retrieve # TODO: implement inference.py
 
 from facenet_pytorch import InceptionResnetV1
 
@@ -47,8 +50,8 @@ def load(model, file_path):
     return model
 
 
-def infer(input_size, infer_batch_size, model, queries, db):
-    retrieval_results = retrieve(model, queries, db, input_size, infer_batch_size)
+def infer(input_size, face_encoder, cartoon_encoder,  queries, db):
+    retrieval_results = retrieve(face_encoder, cartoon_encoder, queries, db, input_size)
 
     return list(zip(range(len(retrieval_results)), retrieval_results.items()))
 
@@ -370,11 +373,32 @@ def main(config):
     
     elif config.mode == 'test':
         # TODO: not implemented yet
-        
-        test_dataset_path = os.path.join(dataset_path + '/test/test_data')
+        test_dataset_path = os.path.join(dataset_path + '/test')
         queries, db = test_data_loader(test_dataset_path)
         cartoon_encoder = load(cartoon_encoder, file_path=config.cartoon_encoder)
-        result_dict = infer(face_encoder, cartoon_encoder, queries, db)
+        result = infer(input_size, face_encoder, cartoon_encoder, queries, db)
+        result_dict = {}
+        with open('result.json', 'r') as f:
+            result = json.load(f)
+            for i in result:
+                key = i[1][0].split('\\')[-1]
+                val = i[1][1][0].split('\\')[-1]
+                result_dict[key] = val.strip()
+
+        pwd = os.path.dirname(os.path.abspath(__file__))
+        ans = []
+
+        with open(pwd + '\FR_Probe_C2P.txt', 'r') as f:
+            lines = f.readlines()
+            for line in lines:
+                line = line.strip()
+                line = line.split(' ')
+                ans.append(result_dict[line[0]])
+
+        with open('result.csv', 'w') as f:
+            for a in ans:
+                f.write(a + '\n')
+
 
         # TODO: save inference result
     else:
