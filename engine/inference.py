@@ -12,7 +12,7 @@ import numpy as np
 
 def retrieve(face_encoder, cartoon_encoder, queries, db, img_size):
 
-    cartoon_encoder = face_encoder
+    # cartoon_encoder = face_encoder
 
     query_paths = queries
     reference_paths = db
