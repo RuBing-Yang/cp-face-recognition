@@ -12,8 +12,6 @@ import numpy as np
 
 def retrieve(face_encoder, cartoon_encoder, queries, db, img_size):
 
-    # cartoon_encoder = face_encoder
-
     query_paths = queries
     reference_paths = db
 
@@ -49,11 +47,11 @@ def retrieve(face_encoder, cartoon_encoder, queries, db, img_size):
     # Evaluation: mean average precision (mAP)
     # You can change this part to fit your evaluation skim
     for (i, query) in enumerate(query_paths):
-        query = query.split('/')[-1].split('.')[0]
-        ranked_list = [reference_paths[k].split('/')[-1].split('.')[0] for k in indices[i]]
+        query = query.split('\\')[-1].split('.')[0]
+        ranked_list = [reference_paths[k].split('\\')[-1].split('.')[0] for k in indices[i]]
         ranked_list = ranked_list[:1000]
 
-        retrieval_results[query] = ranked_list
+        retrieval_results[query] = ranked_list[0]
 
     return retrieval_results
 

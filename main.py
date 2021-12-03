@@ -372,18 +372,13 @@ def main(config):
             save_model_to=config.save_dir)
     
     elif config.mode == 'test':
-        # TODO: not implemented yet
         test_dataset_path = os.path.join(dataset_path + '/test')
         queries, db = test_data_loader(test_dataset_path)
         cartoon_encoder = load(cartoon_encoder, file_path=config.cartoon_encoder)
         result = infer(input_size, face_encoder, cartoon_encoder, queries, db)
         result_dict = {}
-        with open('result.json', 'r') as f:
-            result = json.load(f)
-            for i in result:
-                key = i[1][0].split('\\')[-1]
-                val = i[1][1][0].split('\\')[-1]
-                result_dict[key] = val.strip()
+        for i in result:
+            result_dict[i[1][0]] = i[1][1]
 
         pwd = os.path.dirname(os.path.abspath(__file__))
         ans = []
@@ -398,9 +393,6 @@ def main(config):
         with open('result.csv', 'w') as f:
             for a in ans:
                 f.write(a + '\n')
-
-
-        # TODO: save inference result
     else:
         raise NotImplementedError
 
