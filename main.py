@@ -23,6 +23,7 @@ from utils.datasets import BalancedBatchSampler
 from utils.dataloader import train_data_loader, test_data_loader
 
 # Load initial models
+from architecture.getter import get_model
 from architecture.networks import EmbeddingNetwork
 from architecture.metric import ArcMarginProduct
 
@@ -44,9 +45,9 @@ def save_checkpoint(state, is_best, save_dir='', filename='checkpoint.pth.tar'):
         )
 
 
-def load(model, file_path):
+def load(model, file_path, start_epoch=0):
     model.load_state_dict(torch.load(file_path))
-    print('model loaded!')
+    print(f'Resume model from {os.path.basename(file_path)} at epoch {start_epoch}.')
     return model
 
 
@@ -243,7 +244,6 @@ def main(config):
             num_workers=config.workers, pin_memory=True
         )
 
-        # FIXME: centrecrop may corp some useful info 
         val_loader = torch.utils.data.DataLoader(
             torchvision.datasets.ImageFolder(valdir, transforms.Compose([
                 transforms.Resize(128),
@@ -291,7 +291,7 @@ def main(config):
 
     """ Model """
     # load facenet as face-encoder 
-    face_encoder = InceptionResnetV1(pretrained='vggface2').eval()  # TODO: replace with iresnet100-arcface later 
+    face_encoder = get_model('facenet', pretrained='vggface2').eval()  # TODO: replace with iresnet100-arcface later 
     cartoon_encoder = EmbeddingNetwork(model_name=model_name,
                                        embedding_dim=embedding_dim,
                                        feature_extracting=feature_extracting,
@@ -300,7 +300,7 @@ def main(config):
                                        cross_entropy_flag=cross_entropy_flag)
 
     if config.cartoon_encoder is not None:
-        load(cartoon_encoder, file_path=config.cartoon_encoder)
+        load(cartoon_encoder, file_path=config.cartoon_encoder, start_epoch=config.start_epoch)
 
     if torch.cuda.device_count() > 1: 
         face_encoder = nn.DataParallel(face_encoder).eval()
@@ -311,15 +311,15 @@ def main(config):
         """ Load data """
         train_dataset_path = os.path.join(dataset_path, 'train')
         
-        img_dataset = train_data_loader(data_path=train_dataset_path, img_size=input_size,
-                                        use_augment=use_augmentation)
+        train_dataset = train_data_loader(train_dataset_path, img_size=input_size,
+                                                              use_augment=use_augmentation)
         # NOTE: dataloading
         #   yield a batch of data as following
         #   size: (N, channel, height, width)        
         #   anchor(face image) * 1, positive(cartoon images) * 1, negatives(cartoon images) * (N - 2)
         #       Balanced batch sampler and online train loader
-        train_batch_sampler = BalancedBatchSampler(img_dataset, n_classes=num_classes, n_samples=num_samples)
-        online_train_loader = torch.utils.data.DataLoader(img_dataset,
+        train_batch_sampler = BalancedBatchSampler(train_dataset, n_classes=num_classes, n_samples=num_samples)
+        online_train_loader = torch.utils.data.DataLoader(train_dataset,
                                                           batch_sampler=train_batch_sampler,
                                                           num_workers=workers,
                                                           pin_memory=True)

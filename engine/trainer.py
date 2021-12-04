@@ -53,6 +53,7 @@ def fit(train_loader, nb_epoch,
 
         log_dict = {'epoch': epoch + 1,
                     'epoch_total': nb_epoch,
+                    'lr': scheduler.get_lr()[0],
                     'loss': float(train_loss),
                     }
 
@@ -98,9 +99,9 @@ def retrieval_accuracy(sims, flags, thres_step=1e-2):
 
     return best_thres, acc 
 
-
 def train_epoch(train_loader, cartoon_encoder, face_encoder, 
                 loss_fn, optimizer, device, log_interval):
+    face_encoder.eval()
     cartoon_encoder.train()
     total_loss = 0
 
@@ -127,6 +128,16 @@ def train_epoch(train_loader, cartoon_encoder, face_encoder,
             #       - anchors=cartoons
             #       - positives=face pictures of the same person as anchors
             #       - negatives= other peoples' face pictures
+
+            # DEBUG: check data matched 
+            # N, *_ = cartoons.shape
+            # step = 4
+            # l = 0
+            # for r in range(step, N, step):
+            #     vutils.save_image(cartoons[l: r].cpu(), f'./tmp/{batch_idx:02d}_{l:02d}_{r:02d}_c.png', normalize=True)
+            #     vutils.save_image(faces[l: r].cpu(), f'./tmp/{batch_idx:02d}_{l:02d}_{r:02d}_p.png', normalize=True)
+            #     l = r
+
             cartoon_embeddings = cartoon_encoder(cartoons)
             faces_embeddings = face_encoder(faces)
 
@@ -145,7 +156,8 @@ def train_epoch(train_loader, cartoon_encoder, face_encoder,
         # Print log
         if batch_idx % log_interval == 0:
             message = 'Train: [{}/{} ({:.0f}%)]'.format(
-                batch_idx * len(faces[0]), len(train_loader.dataset), 100. * batch_idx / len(train_loader)) # FIXME: progress counting error
+                batch_idx * len(faces[0]), len(train_loader.dataset), 
+                100. * batch_idx / len(train_loader)) # FIXME: progress counting error
             for name, value in losses.items():
                 message += '\t{}: {:.6f}'.format(name, np.mean(value))
  

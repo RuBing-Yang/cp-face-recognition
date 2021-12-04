@@ -121,16 +121,9 @@ data/
 # training script
 trian.sh
 *.bat
-FR_Gallery_C2P.txt
-FR_Probe_C2P.txt
+*.txt
 jsonreader.py
-model_70.pth.tar
-result.csv
-result.json
-result.txt
-result_40.csv
-test.bat
-train.bat
-test.bat
-train.bat
-*.bat
+*.tar
+*.csv
+*.json
+

@@ -1,5 +1,6 @@
-# PyTorch Image Retrieval  
-A PyTorch framework for an image retrieval task including implementation of [N-pair Loss (NIPS 2016)](http://papers.nips.cc/paper/6199-improved-deep-metric-learning-with-multi-class-n-pair-loss-objective) and [Angular Loss (ICCV 2017)](https://arxiv.org/pdf/1708.01682.pdf).
+# cp-face-recognition
+Repository for CCF training competition: cartoon-picture face recognition, 
+An image retrieval task including implementation of [N-pair Loss (NIPS 2016)](http://papers.nips.cc/paper/6199-improved-deep-metric-learning-with-multi-class-n-pair-loss-objective) and [Angular Loss (ICCV 2017)](https://arxiv.org/pdf/1708.01682.pdf).
 
 ### Loss functions
 We implemented loss functions to train the network for image retrieval.  
