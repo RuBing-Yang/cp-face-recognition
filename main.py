@@ -31,7 +31,7 @@ from architecture.metric import ArcMarginProduct
 from losses import BlendedLoss, MAIN_LOSS_CHOICES
 
 from engine.trainer import fit, train, validate
-from engine.inference import retrieve # TODO: implement inference.py
+from engine.inference import retrieve
 
 from facenet_pytorch import InceptionResnetV1
 
