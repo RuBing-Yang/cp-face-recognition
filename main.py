@@ -20,6 +20,7 @@ from utils.datasets import BalancedBatchSampler
 from utils.dataloader import train_data_loader, test_data_loader
 
 # Load initial models
+from architecture.getter import get_model
 from architecture.networks import EmbeddingNetwork
 from architecture.metric import ArcMarginProduct
 
@@ -240,7 +241,6 @@ def main(config):
             num_workers=config.workers, pin_memory=True
         )
 
-        # FIXME: centrecrop may corp some useful info 
         val_loader = torch.utils.data.DataLoader(
             torchvision.datasets.ImageFolder(valdir, transforms.Compose([
                 transforms.Resize(128),
@@ -288,7 +288,7 @@ def main(config):
 
     """ Model """
     # load facenet as face-encoder 
-    face_encoder = InceptionResnetV1(pretrained='vggface2').eval()  # TODO: replace with iresnet100-arcface later 
+    face_encoder = get_model('facenet', pretrained='vggface2').eval()  # TODO: replace with iresnet100-arcface later 
     cartoon_encoder = EmbeddingNetwork(model_name=model_name,
                                        embedding_dim=embedding_dim,
                                        feature_extracting=feature_extracting,
