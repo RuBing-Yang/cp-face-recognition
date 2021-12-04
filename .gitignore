@@ -119,5 +119,5 @@ data/
 *.png
 
 # training script
-trian.sh
+train.sh
 *.bat
