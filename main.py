@@ -4,8 +4,11 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+# from posix import PRIO_USER
 import shutil
 import argparse
+import csv
+import json
 
 import torch
 import torch.nn as nn
@@ -28,7 +31,7 @@ from architecture.metric import ArcMarginProduct
 from losses import BlendedLoss, MAIN_LOSS_CHOICES
 
 from engine.trainer import fit, train, validate
-# from engine.inference import retrieve # TODO: implement inference.py
+from engine.inference import retrieve # TODO: implement inference.py
 
 from facenet_pytorch import InceptionResnetV1
 
@@ -48,8 +51,8 @@ def load(model, file_path, start_epoch=0):
     return model
 
 
-def infer(input_size, infer_batch_size, model, queries, db):
-    retrieval_results = retrieve(model, queries, db, input_size, infer_batch_size)
+def infer(input_size, face_encoder, cartoon_encoder,  queries, db):
+    retrieval_results = retrieve(face_encoder, cartoon_encoder, queries, db, input_size)
 
     return list(zip(range(len(retrieval_results)), retrieval_results.items()))
 
@@ -94,7 +97,7 @@ def get_arguments():
     args.add_argument('--mode', type=str, choices=['train-face', 'train-all', 'test'], 
                       required=True, help='mode selection')
     args.add_argument('--log-interval', type=int, default=50)
-    args.add_argument('--save-interval', type=int, default=250)
+    args.add_argument('--save-interval', type=int, default=20)
     
     return args.parse_args()
 
@@ -380,14 +383,27 @@ def main(config):
             save_model_to=config.save_dir)
     
     elif config.mode == 'test':
-        # TODO: not implemented yet
-        
-        test_dataset_path = os.path.join(dataset_path + '/test/test_data')
+        test_dataset_path = os.path.join(dataset_path + '/test')
         queries, db = test_data_loader(test_dataset_path)
         cartoon_encoder = load(cartoon_encoder, file_path=config.cartoon_encoder)
-        result_dict = infer(face_encoder, cartoon_encoder, queries, db)
+        result = infer(input_size, face_encoder, cartoon_encoder, queries, db)
+        result_dict = {}
+        for i in result:
+            result_dict[i[1][0]] = i[1][1]
 
-        # TODO: save inference result
+        pwd = os.path.dirname(os.path.abspath(__file__))
+        ans = []
+
+        with open(pwd + '\FR_Probe_C2P.txt', 'r') as f:
+            lines = f.readlines()
+            for line in lines:
+                line = line.strip()
+                line = line.split(' ')
+                ans.append(result_dict[line[0]])
+
+        with open('result.csv', 'w') as f:
+            for a in ans:
+                f.write(a + '\n')
     else:
         raise NotImplementedError
 

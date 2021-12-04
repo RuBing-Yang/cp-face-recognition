@@ -84,14 +84,15 @@ def test_data_loader(data_path):
 
 
 def test_data_generator(data_path, img_size):
-    img_size = (img_size, img_size)
-    data_transforms = transforms.Compose([
-        transforms.Resize(img_size),
+    normalize = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+    grey_transforms = transforms.Compose([
+        transforms.Grayscale(num_output_channels=3),
+        transforms.Resize((img_size, img_size)),
+        transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+        normalize
     ])
-
-    test_image_dataset = TestDataset(data_path, data_transforms)
+    test_image_dataset = TestDataset(data_path, grey_transforms)
 
     return test_image_dataset
 
