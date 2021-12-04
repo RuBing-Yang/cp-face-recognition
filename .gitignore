@@ -119,7 +119,7 @@ data/
 *.png
 
 # training script
-trian.sh
+train.sh
 *.bat
 *.txt
 jsonreader.py
