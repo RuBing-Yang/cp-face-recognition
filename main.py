@@ -4,8 +4,11 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+# from posix import PRIO_USER
 import shutil
 import argparse
+import csv
+import json
 
 import torch
 import torch.nn as nn
@@ -20,7 +23,7 @@ from utils.datasets import BalancedBatchSampler
 from utils.dataloader import train_data_loader, test_data_loader
 
 # Load initial models
-from architecture.getter import get_model
+from architecture.getter import get_model, NAME_MODEL_MAP
 from architecture.networks import EmbeddingNetwork
 from architecture.metric import ArcMarginProduct
 
@@ -28,7 +31,7 @@ from architecture.metric import ArcMarginProduct
 from losses import BlendedLoss, MAIN_LOSS_CHOICES
 
 from engine.trainer import fit, train, validate
-# from engine.inference import retrieve # TODO: implement inference.py
+from engine.inference import retrieve
 
 from facenet_pytorch import InceptionResnetV1
 
@@ -48,8 +51,8 @@ def load(model, file_path, start_epoch=0):
     return model
 
 
-def infer(input_size, infer_batch_size, model, queries, db):
-    retrieval_results = retrieve(model, queries, db, input_size, infer_batch_size)
+def infer(input_size, face_encoder, cartoon_encoder,  queries, db):
+    retrieval_results = retrieve(face_encoder, cartoon_encoder, queries, db, input_size)
 
     return list(zip(range(len(retrieval_results)), retrieval_results.items()))
 
@@ -70,7 +73,7 @@ def get_arguments():
     args.add_argument('--start-epoch', type=int, default=0)
     args.add_argument('--epochs', type=int, default=20)
     args.add_argument('--model', type=str,
-                      choices=['densenet161', 'resnet101',  'inceptionv3', 'seresnext'],
+                      choices=['densenet161', 'resnet101',  'inceptionv3', 'seresnext'] + list(NAME_MODEL_MAP.keys()),
                       default='seresnext')
     args.add_argument('--input-size', type=int, default=112, help='size of input image')
     args.add_argument('--num-classes', type=int, default=64, help='number of classes for batch sampler')
@@ -288,19 +291,28 @@ def main(config):
 
     """ Model """
     # load facenet as face-encoder 
-    face_encoder = get_model('facenet', pretrained='vggface2').eval()  # TODO: replace with iresnet100-arcface later 
-    cartoon_encoder = EmbeddingNetwork(model_name=model_name,
-                                       embedding_dim=embedding_dim,
-                                       feature_extracting=feature_extracting,
-                                       use_pretrained=use_pretrained,
-                                       attention_flag=attention_flag,
-                                       cross_entropy_flag=cross_entropy_flag)
-
+    # face_encoder = get_model('facenet', pretrained='vggface2').eval()  # TODO: replace with iresnet100-arcface later 
+    # cartoon_encoder = EmbeddingNetwork(model_name=model_name,
+    #                                    embedding_dim=embedding_dim,
+    #                                    feature_extracting=feature_extracting,
+    #                                    use_pretrained=use_pretrained,
+    #                                    attention_flag=attention_flag,
+    #                                    cross_entropy_flag=cross_entropy_flag)
+    face_encoder = get_model('resnet100')   # TODO: assign certian backbone to embedding faces 
+    cartoon_encoder = get_model(model_name)
+    
+    if config.face_encoder is not None:
+        face_encoder.load_state_dict(torch.load(config.face_encoder))
+    else: 
+        # NOTE: currntly required face encoder 
+        assert False, "Pretrained face encoder is needed."
+        
     if config.cartoon_encoder is not None:
-        load(cartoon_encoder, file_path=config.cartoon_encoder, start_epoch=config.start_epoch)
+        cartoon_encoder.load_state_dict(torch.load(config.cartoon_encoder))
+        # load(cartoon_encoder, file_path=config.cartoon_encoder, start_epoch=config.start_epoch)
 
     if torch.cuda.device_count() > 1: 
-        face_encoder = nn.DataParallel(face_encoder).eval()
+        face_encoder = nn.DataParallel(face_encoder)
         cartoon_encoder = nn.DataParallel(cartoon_encoder)
 
     if config.mode == 'train-all':
@@ -360,6 +372,8 @@ def main(config):
         # Loss function
         loss_fn = BlendedLoss(loss_type, cross_entropy_flag)
 
+        face_encoder.eval()
+
         # Train (fine-tune) model
         fit(online_train_loader, nb_epoch,
             cartoon_encoder, face_encoder, 
@@ -369,14 +383,27 @@ def main(config):
             save_model_to=config.save_dir)
     
     elif config.mode == 'test':
-        # TODO: not implemented yet
-        
-        test_dataset_path = os.path.join(dataset_path + '/test/test_data')
+        test_dataset_path = os.path.join(dataset_path + '/test')
         queries, db = test_data_loader(test_dataset_path)
         cartoon_encoder = load(cartoon_encoder, file_path=config.cartoon_encoder)
-        result_dict = infer(face_encoder, cartoon_encoder, queries, db)
+        result = infer(input_size, face_encoder, cartoon_encoder, queries, db)
+        result_dict = {}
+        for i in result:
+            result_dict[i[1][0]] = i[1][1]
 
-        # TODO: save inference result
+        pwd = os.path.dirname(os.path.abspath(__file__))
+        ans = []
+
+        with open(pwd + '\FR_Probe_C2P.txt', 'r') as f:
+            lines = f.readlines()
+            for line in lines:
+                line = line.strip()
+                line = line.split(' ')
+                ans.append(result_dict[line[0]])
+
+        with open('result.csv', 'w') as f:
+            for a in ans:
+                f.write(a + '\n')
     else:
         raise NotImplementedError
 

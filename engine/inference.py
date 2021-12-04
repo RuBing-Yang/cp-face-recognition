@@ -9,7 +9,7 @@ from utils.dataloader import test_data_generator
 import numpy as np
 
 
-def retrieve(model, queries, db, img_size, infer_batch_size):
+def retrieve(face_encoder, cartoon_encoder, queries, db, img_size):
 
     query_paths = queries
     reference_paths = db
@@ -17,16 +17,18 @@ def retrieve(model, queries, db, img_size, infer_batch_size):
     query_img_dataset = test_data_generator(queries, img_size=img_size)
     reference_img_dataset = test_data_generator(db, img_size=img_size)
 
-    query_loader = DataLoader(query_img_dataset, batch_size=infer_batch_size, shuffle=False, num_workers=4,
+    query_loader = DataLoader(query_img_dataset, shuffle=False, num_workers=0,
                               pin_memory=True)
-    reference_loader = DataLoader(reference_img_dataset, batch_size=infer_batch_size, shuffle=False, num_workers=4,
+    reference_loader = DataLoader(reference_img_dataset, shuffle=False, num_workers=0,
                                   pin_memory=True)
 
-    model.eval()
-    model.cuda()
+    face_encoder.eval()
+    face_encoder.cuda()
+    cartoon_encoder.eval()
+    cartoon_encoder.cuda()
 
-    query_paths, query_vecs = batch_process(model, query_loader)
-    reference_paths, reference_vecs = batch_process(model, reference_loader)
+    query_paths, query_vecs = batch_process(cartoon_encoder, query_loader)
+    reference_paths, reference_vecs = batch_process(face_encoder, reference_loader)
 
     assert query_paths == queries and reference_paths == db, "order of paths should be same"
 
@@ -44,11 +46,11 @@ def retrieve(model, queries, db, img_size, infer_batch_size):
     # Evaluation: mean average precision (mAP)
     # You can change this part to fit your evaluation skim
     for (i, query) in enumerate(query_paths):
-        query = query.split('/')[-1].split('.')[0]
-        ranked_list = [reference_paths[k].split('/')[-1].split('.')[0] for k in indices[i]]
+        query = query.split('\\')[-1].split('.')[0]
+        ranked_list = [reference_paths[k].split('\\')[-1].split('.')[0] for k in indices[i]]
         ranked_list = ranked_list[:1000]
 
-        retrieval_results[query] = ranked_list
+        retrieval_results[query] = ranked_list[0]
 
     return retrieval_results
 
@@ -82,7 +84,13 @@ def db_augmentation(query_vecs, reference_vecs, top_k=10):
 def average_query_expansion(query_vecs, reference_vecs, top_k=5):
     """
     Average Query Expansion (AQE)
-    Ondrej Chum, et al. "Total Recall: Automatic Query Expansion with a Generative Feature Model for Object Retrieval,"
+    Ondrej Chum, et al. "Total Recall: Automatic Query Expansion with a Generative Feature 
+    
+    
+    
+    
+    
+    el for Object Retrieval,"
     International Conference of Computer Vision. 2007.
     https://www.robots.ox.ac.uk/~vgg/publications/papers/chum07b.pdf
     """
@@ -153,7 +161,7 @@ def _get_feature(model, x):
         features = _get_features_from(model, x, ['classifier'])
         feature = features['classifier']
     else:
-        raise ValueError("Invalid model name: {}".format(model_name))
+        feature = model(x)
 
     return feature
 
