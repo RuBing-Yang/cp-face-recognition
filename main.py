@@ -97,7 +97,7 @@ def get_arguments():
     args.add_argument('--mode', type=str, choices=['train-face', 'train-all', 'test'], 
                       required=True, help='mode selection')
     args.add_argument('--log-interval', type=int, default=50)
-    args.add_argument('--save-interval', type=int, default=20)
+    args.add_argument('--save-interval', type=int, default=250)
     
     return args.parse_args()
 
