@@ -2,7 +2,6 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-from operator import mod
 
 from torch.utils.data import DataLoader
 from utils.dataloader import test_data_generator
@@ -85,7 +84,13 @@ def db_augmentation(query_vecs, reference_vecs, top_k=10):
 def average_query_expansion(query_vecs, reference_vecs, top_k=5):
     """
     Average Query Expansion (AQE)
-    Ondrej Chum, et al. "Total Recall: Automatic Query Expansion with a Generative Feature Model for Object Retrieval,"
+    Ondrej Chum, et al. "Total Recall: Automatic Query Expansion with a Generative Feature 
+    
+    
+    
+    
+    
+    el for Object Retrieval,"
     International Conference of Computer Vision. 2007.
     https://www.robots.ox.ac.uk/~vgg/publications/papers/chum07b.pdf
     """
