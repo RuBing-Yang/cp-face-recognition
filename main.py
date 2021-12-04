@@ -20,7 +20,7 @@ from utils.datasets import BalancedBatchSampler
 from utils.dataloader import train_data_loader, test_data_loader
 
 # Load initial models
-from architecture.getter import get_model
+from architecture.getter import get_model, NAME_MODEL_MAP
 from architecture.networks import EmbeddingNetwork
 from architecture.metric import ArcMarginProduct
 
@@ -70,7 +70,7 @@ def get_arguments():
     args.add_argument('--start-epoch', type=int, default=0)
     args.add_argument('--epochs', type=int, default=20)
     args.add_argument('--model', type=str,
-                      choices=['densenet161', 'resnet101',  'inceptionv3', 'seresnext'],
+                      choices=['densenet161', 'resnet101',  'inceptionv3', 'seresnext'] + list(NAME_MODEL_MAP.keys()),
                       default='seresnext')
     args.add_argument('--input-size', type=int, default=112, help='size of input image')
     args.add_argument('--num-classes', type=int, default=64, help='number of classes for batch sampler')
@@ -288,19 +288,28 @@ def main(config):
 
     """ Model """
     # load facenet as face-encoder 
-    face_encoder = get_model('facenet', pretrained='vggface2').eval()  # TODO: replace with iresnet100-arcface later 
-    cartoon_encoder = EmbeddingNetwork(model_name=model_name,
-                                       embedding_dim=embedding_dim,
-                                       feature_extracting=feature_extracting,
-                                       use_pretrained=use_pretrained,
-                                       attention_flag=attention_flag,
-                                       cross_entropy_flag=cross_entropy_flag)
-
+    # face_encoder = get_model('facenet', pretrained='vggface2').eval()  # TODO: replace with iresnet100-arcface later 
+    # cartoon_encoder = EmbeddingNetwork(model_name=model_name,
+    #                                    embedding_dim=embedding_dim,
+    #                                    feature_extracting=feature_extracting,
+    #                                    use_pretrained=use_pretrained,
+    #                                    attention_flag=attention_flag,
+    #                                    cross_entropy_flag=cross_entropy_flag)
+    face_encoder = get_model('resnet100')   # TODO: assign certian backbone to embedding faces 
+    cartoon_encoder = get_model(model_name)
+    
+    if config.face_encoder is not None:
+        face_encoder.load_state_dict(torch.load(config.face_encoder))
+    else: 
+        # NOTE: currntly required face encoder 
+        assert False, "Pretrained face encoder is needed."
+        
     if config.cartoon_encoder is not None:
-        load(cartoon_encoder, file_path=config.cartoon_encoder, start_epoch=config.start_epoch)
+        cartoon_encoder.load_state_dict(torch.load(config.cartoon_encoder))
+        # load(cartoon_encoder, file_path=config.cartoon_encoder, start_epoch=config.start_epoch)
 
     if torch.cuda.device_count() > 1: 
-        face_encoder = nn.DataParallel(face_encoder).eval()
+        face_encoder = nn.DataParallel(face_encoder)
         cartoon_encoder = nn.DataParallel(cartoon_encoder)
 
     if config.mode == 'train-all':
@@ -359,6 +368,8 @@ def main(config):
 
         # Loss function
         loss_fn = BlendedLoss(loss_type, cross_entropy_flag)
+
+        face_encoder.eval()
 
         # Train (fine-tune) model
         fit(online_train_loader, nb_epoch,
