@@ -33,8 +33,6 @@ from losses import BlendedLoss, MAIN_LOSS_CHOICES
 from engine.trainer import fit, train, validate
 from engine.inference import retrieve
 
-from facenet_pytorch import InceptionResnetV1
-
 def save_checkpoint(state, is_best, save_dir='', filename='checkpoint.pth.tar'):
     file_path = os.path.join(save_dir, filename)
     torch.save(state, file_path)
@@ -51,8 +49,8 @@ def load(model, file_path, start_epoch=0):
     return model
 
 
-def infer(input_size, face_encoder, cartoon_encoder,  queries, db):
-    retrieval_results = retrieve(face_encoder, cartoon_encoder, queries, db, input_size)
+def infer(input_size, model, queries, db):
+    retrieval_results = retrieve(model, queries, db, input_size)
 
     return list(zip(range(len(retrieval_results)), retrieval_results.items()))
 
@@ -62,10 +60,11 @@ def get_arguments():
 
     args.add_argument('--dataset-path', type=str)
     args.add_argument('--save-dir', type=str, default='./model')
-    args.add_argument('--face-encoder', type=str, 
-                      help='checkpoint path of face encoder.')   # deprecated
-    args.add_argument('--cartoon-encoder', type=str,
-                      help='checkpoint path of cartoon encoder.')
+    # args.add_argument('--face-encoder', type=str, 
+    #                   help='checkpoint path of face encoder.')   # deprecated
+    # args.add_argument('--cartoon-encoder', type=str,
+    #                   help='checkpoint path of cartoon encoder.')
+    args.add_argument('--resume', type=str)
     args.add_argument('--workers', type=int, default=4)
     args.add_argument('--gpu', type=int, default=0)
 
@@ -94,7 +93,7 @@ def get_arguments():
                       help='margin m in Arcface.')
     
     # Mode selection
-    args.add_argument('--mode', type=str, choices=['train-face', 'train-all', 'test'], 
+    args.add_argument('--mode', type=str, choices=['train', 'test'], 
                       required=True, help='mode selection')
     args.add_argument('--log-interval', type=int, default=50)
     args.add_argument('--save-interval', type=int, default=250)
@@ -298,24 +297,18 @@ def main(config):
     #                                    use_pretrained=use_pretrained,
     #                                    attention_flag=attention_flag,
     #                                    cross_entropy_flag=cross_entropy_flag)
-    face_encoder = get_model('resnet100')   # TODO: assign certian backbone to embedding faces 
-    cartoon_encoder = get_model(model_name)
-    
-    if config.face_encoder is not None:
-        face_encoder.load_state_dict(torch.load(config.face_encoder))
-    else: 
-        # NOTE: currntly required face encoder 
-        assert False, "Pretrained face encoder is needed."
-        
-    if config.cartoon_encoder is not None:
-        cartoon_encoder.load_state_dict(torch.load(config.cartoon_encoder))
+    # face_encoder = get_model('resnet100')   # TODO: assign certian backbone to embedding faces 
+    model = get_model(model_name)
+
+    if config.resume is not None:
+        model.load_state_dict(config.resume)
+
         # load(cartoon_encoder, file_path=config.cartoon_encoder, start_epoch=config.start_epoch)
 
     if torch.cuda.device_count() > 1: 
-        face_encoder = nn.DataParallel(face_encoder)
-        cartoon_encoder = nn.DataParallel(cartoon_encoder)
+        model = nn.DataParallel(model)
 
-    if config.mode == 'train-all':
+    if config.mode == 'train':
 
         """ Load data """
         train_dataset_path = os.path.join(dataset_path, 'train')
@@ -336,22 +329,23 @@ def main(config):
         device = torch.device(f"cuda:{config.gpu}" if torch.cuda.is_available() else "cpu")
 
         # Gather the parameters to be optimized/updated.
-        params_to_update = cartoon_encoder.parameters()
+        params_to_update = model.parameters()
         print("Params to learn:")
         if feature_extracting:
             params_to_update = []   
-            for name, param in cartoon_encoder.named_parameters():
+            for name, param in model.named_parameters():
                 if param.requires_grad:
                     params_to_update.append(param)
                     print("\t", name)
         else:
-            for name, param in cartoon_encoder.named_parameters():
+            for name, param in model.named_parameters():
                 if param.requires_grad:
                     print("\t", name)
 
         # Send the model to GPU
-        face_encoder = face_encoder.to(device)
-        cartoon_encoder = cartoon_encoder.to(device)
+        # face_encoder = face_encoder.to(device)
+        # cartoon_encoder = cartoon_encoder.to(device)
+        model = model.to(device)
 
         optimizer = optim.Adam(params_to_update, lr=lr, weight_decay=1e-4)
         if scheduler_name == 'StepLR':
@@ -372,12 +366,10 @@ def main(config):
         # Loss function
         loss_fn = BlendedLoss(loss_type, cross_entropy_flag)
 
-        face_encoder.eval()
 
         # Train (fine-tune) model
-        fit(online_train_loader, nb_epoch,
-            cartoon_encoder, face_encoder, 
-            loss_fn, optimizer, scheduler, 
+        fit(online_train_loader, nb_epoch, 
+            model, loss_fn, optimizer, scheduler, 
             device, log_interval, save_interval,
             start_epoch=start_epoch,
             save_model_to=config.save_dir)
@@ -385,8 +377,9 @@ def main(config):
     elif config.mode == 'test':
         test_dataset_path = os.path.join(dataset_path + '/test')
         queries, db = test_data_loader(test_dataset_path)
-        cartoon_encoder = load(cartoon_encoder, file_path=config.cartoon_encoder)
-        result = infer(input_size, face_encoder, cartoon_encoder, queries, db)
+
+        torch.cuda.set_device(config.gpu)
+        result = infer(input_size, model, queries, db)  
         result_dict = {}
         for i in result:
             result_dict[i[1][0]] = i[1][1]
