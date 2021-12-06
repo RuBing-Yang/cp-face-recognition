@@ -24,8 +24,7 @@ def save(model, ckpt_num, dir_name):
     print('model saved!')
 
 
-def fit(train_loader, nb_epoch,  
-        cartoon_encoder, face_encoder, 
+def fit(train_loader, nb_epoch, model,
         loss_fn, optimizer, scheduler, 
         device, log_interval, save_interval, 
         start_epoch=0, save_model_to='./tmp/save_model_to'):
@@ -40,7 +39,7 @@ def fit(train_loader, nb_epoch,
     """
 
     # Save pre-trained model
-    save(cartoon_encoder, 0, save_model_to)
+    save(model, 0, save_model_to)
 
     for epoch in range(0, start_epoch):
         scheduler.step()
@@ -48,8 +47,8 @@ def fit(train_loader, nb_epoch,
     for epoch in range(start_epoch, nb_epoch):
 
         # Train stage
-        train_loss = train_epoch(train_loader, cartoon_encoder, face_encoder, 
-                                 loss_fn, optimizer, device, log_interval)
+        train_loss = train_epoch(train_loader, model, loss_fn, 
+                                 optimizer, device, log_interval)
 
         log_dict = {'epoch': epoch + 1,
                     'epoch_total': nb_epoch,
@@ -64,7 +63,7 @@ def fit(train_loader, nb_epoch,
         print(message)
         print(log_dict)
         if (epoch + 1) % save_interval == 0:
-            save(cartoon_encoder, epoch + 1, save_model_to)
+            save(model, epoch + 1, save_model_to)
 
 
 def class_accuracy(output, target, topk=(1,)):
@@ -99,10 +98,9 @@ def retrieval_accuracy(sims, flags, thres_step=1e-2):
 
     return best_thres, acc 
 
-def train_epoch(train_loader, cartoon_encoder, face_encoder, 
-                loss_fn, optimizer, device, log_interval):
-    face_encoder.eval()
-    cartoon_encoder.train()
+def train_epoch(train_loader, model, loss_fn, 
+                optimizer, device, log_interval):
+    model.train()
     total_loss = 0
 
     for batch_idx, (faces, cartoons, targets) in enumerate(train_loader):
@@ -138,16 +136,15 @@ def train_epoch(train_loader, cartoon_encoder, face_encoder,
             #     vutils.save_image(faces[l: r].cpu(), f'./tmp/{batch_idx:02d}_{l:02d}_{r:02d}_p.png', normalize=True)
             #     l = r
 
-            cartoon_embeddings = cartoon_encoder(cartoons)
-            faces_embeddings = face_encoder(faces)
+            cartoon_embeddings = model(cartoons)
+            faces_embeddings = model(faces)
 
             assert cartoon_embeddings.shape == faces_embeddings.shape, \
                    "both picture need to be projected into same space"
             
             output_embeddings = torch.cat([cartoon_embeddings, faces_embeddings], dim=0)
             
-            blended_loss, losses = loss_fn.calculate_loss(
-                targets, output_embeddings)
+            blended_loss, losses = loss_fn.calculate_loss(targets, output_embeddings)
         total_loss += blended_loss.item()
         blended_loss.backward()
 
