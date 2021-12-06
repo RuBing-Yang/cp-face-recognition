@@ -9,7 +9,7 @@ from utils.dataloader import test_data_generator
 import numpy as np
 
 
-def retrieve(face_encoder, cartoon_encoder, queries, db, img_size):
+def retrieve(model, queries, db, img_size):
 
     query_paths = queries
     reference_paths = db
@@ -17,18 +17,16 @@ def retrieve(face_encoder, cartoon_encoder, queries, db, img_size):
     query_img_dataset = test_data_generator(queries, img_size=img_size)
     reference_img_dataset = test_data_generator(db, img_size=img_size)
 
-    query_loader = DataLoader(query_img_dataset, shuffle=False, num_workers=0,
-                              pin_memory=True)
-    reference_loader = DataLoader(reference_img_dataset, shuffle=False, num_workers=0,
-                                  pin_memory=True)
+    query_loader = DataLoader(query_img_dataset, shuffle=False, 
+                              num_workers=0, pin_memory=True)
+    reference_loader = DataLoader(reference_img_dataset, shuffle=False, 
+                                  num_workers=0, pin_memory=True)
 
-    face_encoder.eval()
-    face_encoder.cuda()
-    cartoon_encoder.eval()
-    cartoon_encoder.cuda()
+    model.eval()
+    model.cuda()
 
-    query_paths, query_vecs = batch_process(cartoon_encoder, query_loader)
-    reference_paths, reference_vecs = batch_process(face_encoder, reference_loader)
+    query_paths, query_vecs = batch_process(model, query_loader)
+    reference_paths, reference_vecs = batch_process(model, reference_loader)
 
     assert query_paths == queries and reference_paths == db, "order of paths should be same"
 
@@ -161,6 +159,7 @@ def _get_feature(model, x):
         features = _get_features_from(model, x, ['classifier'])
         feature = features['classifier']
     else:
+        # NOTE: default as EmbeddingNetwork
         feature = model(x)
 
     return feature
